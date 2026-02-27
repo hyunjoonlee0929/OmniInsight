@@ -23,12 +23,19 @@ class ExecutiveReportAgent(BaseAgent):
         metrics = model_payload.get("metrics", {})
         metric_text = ", ".join([f"{k}: {v:.4f}" for k, v in metrics.items() if isinstance(v, (int, float))])
 
+        bio_insights = payload.get("bio_insights", {})
+
         report = {
             "summary": payload.get("summary", {}),
             "model": model_payload,
             "interpretation": payload.get("interpretation", {}),
             "domain_mapping": domain_mapping,
             "top_features": payload.get("interpretation", {}).get("top_features", []),
+            "pathway_scores": bio_insights.get("pathway_scores", {}),
+            "pathway_interpretation": domain_mapping.get("pathway_interpretation", []),
+            "bioengineering_targets": domain_mapping.get("candidate_engineering_targets", []),
+            "hypotheses": domain_mapping.get("hypotheses", []),
+            "bio_insights": bio_insights,
         }
 
         return {
@@ -44,6 +51,7 @@ class ExecutiveReportAgent(BaseAgent):
         domain_payload = {
             "summary": payload.get("summary", {}),
             "interpretation": payload.get("interpretation", {}),
+            "bio_insights": payload.get("bio_insights", {}),
         }
         domain_mapping = self.domain_agent.run(domain_payload)
 
@@ -52,6 +60,7 @@ class ExecutiveReportAgent(BaseAgent):
             "model": payload.get("model", {}),
             "interpretation": payload.get("interpretation", {}),
             "domain_mapping": domain_mapping,
+            "bio_insights": payload.get("bio_insights", {}),
         }
 
         if not self.has_openai_key():
@@ -60,7 +69,7 @@ class ExecutiveReportAgent(BaseAgent):
         try:
             return self._call_openai_json(
                 (
-                    "You are an executive report agent. Return valid JSON only with keys: "
+                    "You are an executive bio-AI report agent. Return valid JSON only with keys: "
                     "agent, mode, report_title, executive_summary, report."
                 ),
                 final_payload,

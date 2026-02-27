@@ -89,13 +89,11 @@ class GeneralAdapter(BaseAdapter):
             cfg=train_cfg,
         )
 
-    def interpret(self, processed: dict[str, Any], model_result: ModelResult) -> dict[str, Any]:
-        """Compute SHAP-based feature importance and convert to agent output."""
+    def _compute_shap_payload(self, processed: dict[str, Any], cfg: GeneralAdapterConfig, model_result: ModelResult) -> dict[str, Any]:
+        """Compute SHAP feature importances from trained model."""
         pdata = processed["processed"]
-        cfg: GeneralAdapterConfig = processed["config"]
-
         logger.info("Running SHAP interpretation for %s", cfg.model_type)
-        shap_payload = self.shap_engine.explain(
+        return self.shap_engine.explain(
             model=model_result.model,
             X_reference=pdata.X_train,
             X_target=pdata.X_test,
@@ -104,6 +102,11 @@ class GeneralAdapter(BaseAdapter):
             model_type=cfg.model_type,
             top_k=cfg.top_k_features,
         )
+
+    def interpret(self, processed: dict[str, Any], model_result: ModelResult) -> dict[str, Any]:
+        """Compute SHAP-based feature importance and convert to agent output."""
+        cfg: GeneralAdapterConfig = processed["config"]
+        shap_payload = self._compute_shap_payload(processed=processed, cfg=cfg, model_result=model_result)
         return self.interpretation_agent.run(shap_payload)
 
     def generate_report(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -117,8 +120,9 @@ class GeneralAdapter(BaseAdapter):
         pre["config"] = config
 
         model_result = self.train(pre)
+        shap_payload = self._compute_shap_payload(processed=pre, cfg=config, model_result=model_result)
         summary = self.summary_agent.run(pre["validation"].to_dict())
-        interpretation = self.interpret(pre, model_result)
+        interpretation = self.interpretation_agent.run(shap_payload)
 
         payload = {
             "summary": summary,
@@ -139,6 +143,7 @@ class GeneralAdapter(BaseAdapter):
             "interpretation_output": interpretation,
             "payload": payload,
             "processed_payload": pre,
+            "shap_payload": shap_payload,
         }
 
     def run(self, df: pd.DataFrame, config: GeneralAdapterConfig) -> dict[str, Any]:

@@ -15,7 +15,10 @@ class DomainMappingAgent(BaseAgent):
         return "domain_mapping_agent"
 
     def _mock(self, payload: dict[str, Any]) -> dict[str, Any]:
-        top_features = payload.get("interpretation", {}).get("top_features", [])
+        interpretation = payload.get("interpretation", {})
+        top_features = interpretation.get("top_features", [])
+        bio_insights = payload.get("bio_insights", {})
+
         mapped = [
             {
                 "feature": f,
@@ -24,12 +27,28 @@ class DomainMappingAgent(BaseAgent):
             }
             for f in top_features[:5]
         ]
+
+        dominant_pathways = bio_insights.get("dominant_pathways", [])
+        pathway_interpretation = [
+            {
+                "pathway": item.get("pathway"),
+                "interpretation": f"Pathway {item.get('pathway')} shows elevated aggregate importance.",
+            }
+            for item in dominant_pathways[:5]
+        ]
+
+        candidate_targets = bio_insights.get("candidate_engineering_targets", [])
+        hypotheses = bio_insights.get("hypotheses", [])
+
         return {
             "agent": self.name,
             "mode": "mock",
             "mapped_concepts": mapped,
+            "pathway_interpretation": pathway_interpretation,
+            "candidate_engineering_targets": candidate_targets,
+            "hypotheses": hypotheses,
             "caveats": [
-                "Domain mappings are heuristic because no external ontology is configured.",
+                "Domain mappings are deterministic abstractions unless ontology knowledge is connected.",
             ],
         }
 
@@ -41,8 +60,9 @@ class DomainMappingAgent(BaseAgent):
         try:
             return self._call_openai_json(
                 (
-                    "You are a domain mapping agent. Return valid JSON only with keys: "
-                    "agent, mode, mapped_concepts, caveats."
+                    "You are a domain mapping agent for multi-omics AI. Return valid JSON only with keys: "
+                    "agent, mode, mapped_concepts, pathway_interpretation, candidate_engineering_targets, "
+                    "hypotheses, caveats."
                 ),
                 payload,
             )

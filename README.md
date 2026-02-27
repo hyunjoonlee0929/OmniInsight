@@ -103,3 +103,31 @@ In the dashboard you can upload any CSV, choose target/task/model, and execute t
 
 - If `OPENAI_API_KEY` is set, agents call OpenAI and return JSON outputs.
 - If no API key is set, agents return deterministic structured mock outputs.
+
+## Bio AI Extension
+
+OmniInsight includes a Bio AI extension that mimics AI-driven biological insight pipelines:
+
+- Multi-omics schema ingestion across transcriptomics, proteomics, and metabolomics files.
+- Sample-wise merge using a shared sample ID to build unified training matrices.
+- Feature block tracking per omics layer to preserve modality provenance.
+- Gene/protein/metabolite-to-pathway abstraction using deterministic pathway mapping.
+- Pathway-level importance aggregation from model feature importance outputs.
+- Biological insight abstraction including:
+  - top regulatory genes
+  - dominant pathways
+  - candidate bioengineering targets
+  - hypothesis statements for follow-up experiments
+
+Run Bio mode by providing one or more omics blocks:
+
+```bash
+python OmniInsight/main.py \
+  --data OmniInsight/data/bio_base_dataset.csv \
+  --transcriptomics OmniInsight/data/transcriptomics.csv \
+  --proteomics OmniInsight/data/proteomics.csv \
+  --metabolomics OmniInsight/data/metabolomics.csv \
+  --sample-id-col sample_id \
+  --target-column target \
+  --use-bio-adapter
+```

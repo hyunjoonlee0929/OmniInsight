@@ -56,16 +56,25 @@ def load_config(path: Path) -> dict[str, Any]:
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Run OmniInsight end-to-end pipeline")
-    parser.add_argument("--data", type=Path, default=Path("OmniInsight/data/example_dataset.csv"), help="Path to input CSV")
-    parser.add_argument("--protein-data", type=Path, default=None, help="Optional protein CSV for bio adapter mode")
+    parser.add_argument("--data", type=Path, default=Path("OmniInsight/data/example_dataset.csv"), help="Path to base input CSV")
+    parser.add_argument("--transcriptomics", type=Path, default=None, help="Optional transcriptomics CSV")
+    parser.add_argument("--proteomics", type=Path, default=None, help="Optional proteomics CSV")
+    parser.add_argument("--metabolomics", type=Path, default=None, help="Optional metabolomics CSV")
+    parser.add_argument("--sample-id-col", type=str, default="sample_id", help="Sample ID column for multi-omics merge")
     parser.add_argument("--config", type=Path, default=Path("OmniInsight/config/model_config.yaml"), help="Path to model config")
+    parser.add_argument(
+        "--pathway-mapping",
+        type=Path,
+        default=Path("OmniInsight/config/pathway_mapping.json"),
+        help="Pathway mapping JSON path",
+    )
     parser.add_argument("--task-type", choices=["classification", "regression"], default=None, help="Override task type")
     parser.add_argument("--model-type", choices=["xgboost", "dnn"], default=None, help="Override model type")
     parser.add_argument("--target-column", type=str, default=None, help="Override target column")
     parser.add_argument("--top-k", type=int, default=None, help="Number of top SHAP features")
     parser.add_argument("--seed", type=int, default=42, help="Global random seed")
     parser.add_argument("--from-run", type=str, default=None, help="Re-run using saved config from runs/{run_id}")
-    parser.add_argument("--use-bio-adapter", action="store_true", help="Use BioAdapter for multi-omics mode")
+    parser.add_argument("--use-bio-adapter", action="store_true", help="Use BioAdapter")
     parser.add_argument("--output", type=Path, default=None, help="Optional output path for JSON report")
     parser.add_argument(
         "--log-level",
@@ -96,6 +105,20 @@ def _build_general_config(config_raw: dict[str, Any], args: argparse.Namespace) 
     )
 
 
+def _config_to_serializable(config_obj: GeneralAdapterConfig | BioAdapterConfig) -> dict[str, Any]:
+    """Convert adapter config to serializable dict for tracking."""
+    data = asdict(config_obj)
+    for key, value in list(data.items()):
+        if hasattr(value, "shape") and hasattr(value, "columns"):
+            data[key] = {
+                "type": "dataframe",
+                "rows": int(value.shape[0]),
+                "cols": int(value.shape[1]),
+                "columns": [str(c) for c in value.columns],
+            }
+    return data
+
+
 def _apply_from_run(args: argparse.Namespace, tracker: ExperimentTracker) -> argparse.Namespace:
     """Load run snapshot and mutate args for reproducible reruns."""
     if not args.from_run:
@@ -107,20 +130,24 @@ def _apply_from_run(args: argparse.Namespace, tracker: ExperimentTracker) -> arg
     args.loaded_adapter_config = run_cfg
 
     args.data = Path(run_input["data_path"])
-    protein_path = run_input.get("protein_data_path")
-    args.protein_data = Path(protein_path) if protein_path else None
+    args.transcriptomics = Path(run_input["transcriptomics_path"]) if run_input.get("transcriptomics_path") else None
+    args.proteomics = Path(run_input["proteomics_path"]) if run_input.get("proteomics_path") else None
+    args.metabolomics = Path(run_input["metabolomics_path"]) if run_input.get("metabolomics_path") else None
     args.use_bio_adapter = bool(run_input.get("use_bio_adapter", False))
 
     args.config = Path(snapshot["config_path"])
     args.seed = int(snapshot.get("seed", run_cfg.get("random_seed", 42)))
-
-    args.task_type = run_cfg.get("task_type")
-    args.model_type = run_cfg.get("model_type")
-    args.target_column = run_cfg.get("target_column")
-    args.top_k = int(run_cfg.get("top_k_features", 10))
+    args.sample_id_col = str(run_cfg.get("sample_id_column", args.sample_id_col))
+    args.pathway_mapping = Path(run_cfg.get("pathway_mapping_path", str(args.pathway_mapping)))
 
     logger.info("Loaded run snapshot from %s", args.from_run)
     return args
+
+
+def _load_optional_df(path: Path | None) -> pd.DataFrame | None:
+    if path is None:
+        return None
+    return pd.read_csv(path)
 
 
 def main() -> None:
@@ -137,26 +164,42 @@ def main() -> None:
     cfg_hash = tracker.config_hash(args.config)
 
     logger.info("Config hash: %s", cfg_hash)
-    logger.info("Reading data from %s", args.data)
-    df = pd.read_csv(args.data)
+    logger.info("Reading base data from %s", args.data)
+    base_df = pd.read_csv(args.data)
 
     loaded_adapter_config = getattr(args, "loaded_adapter_config", None)
     if loaded_adapter_config:
-        adapter_cfg = GeneralAdapterConfig(**loaded_adapter_config)
+        adapter_cfg = GeneralAdapterConfig(**{k: v for k, v in loaded_adapter_config.items() if k in GeneralAdapterConfig.__dataclass_fields__})
     else:
         adapter_cfg = _build_general_config(cfg, args)
+
+    use_bio = args.use_bio_adapter or any([args.transcriptomics, args.proteomics, args.metabolomics])
+
     run_id, run_path = tracker.create_run(adapter_cfg.model_type)
 
-    if args.use_bio_adapter:
-        protein_df = pd.read_csv(args.protein_data) if args.protein_data else None
+    if use_bio:
+        tx_df = _load_optional_df(args.transcriptomics)
+        pr_df = _load_optional_df(args.proteomics)
+        mt_df = _load_optional_df(args.metabolomics)
+
+        bio_cfg_dict = _config_to_serializable(adapter_cfg)
+        bio_cfg = BioAdapterConfig(
+            **asdict(adapter_cfg),
+            sample_id_column=args.sample_id_col,
+            transcriptomics_df=tx_df,
+            proteomics_df=pr_df,
+            metabolomics_df=mt_df,
+            pathway_mapping_path=str(args.pathway_mapping),
+        )
         adapter = BioAdapter()
-        exec_cfg = BioAdapterConfig(**asdict(adapter_cfg), protein_df=protein_df)
         logger.info("Running BioAdapter")
-        details = adapter.run_with_details(df=df, config=exec_cfg)
+        details = adapter.run_with_details(df=base_df, config=bio_cfg)
+        adapter_cfg_serializable = {**bio_cfg_dict, "sample_id_column": args.sample_id_col, "pathway_mapping_path": str(args.pathway_mapping)}
     else:
         adapter = GeneralAdapter()
         logger.info("Running GeneralAdapter")
-        details = adapter.run_with_details(df=df, config=adapter_cfg)
+        details = adapter.run_with_details(df=base_df, config=adapter_cfg)
+        adapter_cfg_serializable = _config_to_serializable(adapter_cfg)
 
     report = details["report"]
     model_result = details["model_result"]
@@ -164,6 +207,7 @@ def main() -> None:
     report_body = report.get("report", {})
     top_features = report_body.get("top_features", [])
     metrics = report_body.get("model", {}).get("metrics", model_result.metrics)
+    pathway_scores = details.get("pathway_scores", report_body.get("pathway_scores", {}))
 
     snapshot = {
         "run_id": run_id,
@@ -173,17 +217,20 @@ def main() -> None:
         "seed": args.seed,
         "input": {
             "data_path": str(args.data.resolve()),
-            "protein_data_path": None if args.protein_data is None else str(args.protein_data.resolve()),
-            "use_bio_adapter": args.use_bio_adapter,
+            "transcriptomics_path": None if args.transcriptomics is None else str(args.transcriptomics.resolve()),
+            "proteomics_path": None if args.proteomics is None else str(args.proteomics.resolve()),
+            "metabolomics_path": None if args.metabolomics is None else str(args.metabolomics.resolve()),
+            "use_bio_adapter": bool(use_bio),
         },
-        "adapter_config": asdict(adapter_cfg),
+        "adapter_config": adapter_cfg_serializable,
     }
 
     tracker.save_yaml(run_path / "config_snapshot.yaml", snapshot)
     tracker.save_yaml(run_path / "config_model_snapshot.yaml", cfg)
-    tracker.save_yaml(run_path / "model_hyperparameters.yaml", asdict(adapter_cfg))
+    tracker.save_yaml(run_path / "model_hyperparameters.yaml", adapter_cfg_serializable)
     tracker.save_json(run_path / "metrics.json", metrics)
     tracker.save_json(run_path / "top_features.json", top_features)
+    tracker.save_json(run_path / "pathway_scores.json", pathway_scores)
     tracker.save_text(run_path / "config_hash.txt", cfg_hash)
 
     tracker.save_json(
@@ -193,6 +240,7 @@ def main() -> None:
             "interpretation_agent": details["interpretation_output"],
             "domain_mapping_agent": report_body.get("domain_mapping", {}),
             "executive_report_agent": report,
+            "bio_insights": details.get("bio_insights", {}),
         },
     )
 
