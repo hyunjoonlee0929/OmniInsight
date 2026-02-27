@@ -136,6 +136,12 @@ class GeneralAdapter(BaseAdapter):
         }
         report = self.generate_report(payload)
         logger.info("Pipeline completed")
+        agent_traces = {
+            "summary_agent": self.summary_agent.last_trace,
+            "interpretation_agent": self.interpretation_agent.last_trace,
+            "domain_mapping_agent": self.report_agent.domain_agent.last_trace,
+            "executive_report_agent": self.report_agent.last_trace,
+        }
         return {
             "report": report,
             "model_result": model_result,
@@ -144,6 +150,7 @@ class GeneralAdapter(BaseAdapter):
             "payload": payload,
             "processed_payload": pre,
             "shap_payload": shap_payload,
+            "agent_traces": agent_traces,
         }
 
     def run(self, df: pd.DataFrame, config: GeneralAdapterConfig) -> dict[str, Any]:

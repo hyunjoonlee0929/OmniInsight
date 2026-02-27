@@ -110,10 +110,17 @@ class BioAdapter(GeneralAdapter):
         report = self.generate_report(payload)
 
         details["report"] = report
+        details["payload"] = payload
         details["bio_insights"] = bio_insights
         details["pathway_scores"] = pathway_scores
         details["feature_blocks"] = feature_blocks
         details["merged_rows"] = len(merged_df)
+        details["agent_traces"] = {
+            "summary_agent": self.summary_agent.last_trace,
+            "interpretation_agent": self.interpretation_agent.last_trace,
+            "domain_mapping_agent": self.report_agent.domain_agent.last_trace,
+            "executive_report_agent": self.report_agent.last_trace,
+        }
 
         return details
 

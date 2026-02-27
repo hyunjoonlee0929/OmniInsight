@@ -4,8 +4,29 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from .base_agent import BaseAgent
 from .domain_agent import DomainMappingAgent
+
+
+class ReportInputSchema(BaseModel):
+    """Validated input schema for ExecutiveReportAgent."""
+
+    summary: dict[str, Any] = Field(default_factory=dict)
+    model: dict[str, Any] = Field(default_factory=dict)
+    interpretation: dict[str, Any] = Field(default_factory=dict)
+    bio_insights: dict[str, Any] = Field(default_factory=dict)
+
+
+class ReportOutputSchema(BaseModel):
+    """Validated output schema for ExecutiveReportAgent."""
+
+    agent: str
+    mode: str
+    report_title: str
+    executive_summary: str
+    report: dict[str, Any]
 
 
 class ExecutiveReportAgent(BaseAgent):
@@ -48,31 +69,40 @@ class ExecutiveReportAgent(BaseAgent):
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Assemble final JSON report."""
+        validated_input = self._validate_input(ReportInputSchema, payload)
+
         domain_payload = {
-            "summary": payload.get("summary", {}),
-            "interpretation": payload.get("interpretation", {}),
-            "bio_insights": payload.get("bio_insights", {}),
+            "summary": validated_input.get("summary", {}),
+            "interpretation": validated_input.get("interpretation", {}),
+            "bio_insights": validated_input.get("bio_insights", {}),
         }
         domain_mapping = self.domain_agent.run(domain_payload)
 
         final_payload = {
-            "summary": payload.get("summary", {}),
-            "model": payload.get("model", {}),
-            "interpretation": payload.get("interpretation", {}),
+            "summary": validated_input.get("summary", {}),
+            "model": validated_input.get("model", {}),
+            "interpretation": validated_input.get("interpretation", {}),
             "domain_mapping": domain_mapping,
-            "bio_insights": payload.get("bio_insights", {}),
+            "bio_insights": validated_input.get("bio_insights", {}),
         }
 
-        if not self.has_openai_key():
-            return self._mock(final_payload, domain_mapping)
+        used_openai = False
+        if self.has_openai_key():
+            try:
+                used_openai = True
+                output = self._call_openai_json(
+                    (
+                        "You are an executive bio-AI report agent. Return valid JSON only with keys: "
+                        "agent, mode, report_title, executive_summary, report."
+                    ),
+                    final_payload,
+                )
+            except Exception:
+                used_openai = False
+                output = self._mock(final_payload, domain_mapping)
+        else:
+            output = self._mock(final_payload, domain_mapping)
 
-        try:
-            return self._call_openai_json(
-                (
-                    "You are an executive bio-AI report agent. Return valid JSON only with keys: "
-                    "agent, mode, report_title, executive_summary, report."
-                ),
-                final_payload,
-            )
-        except Exception:
-            return self._mock(final_payload, domain_mapping)
+        validated_output = self._validate_output(ReportOutputSchema, output)
+        self._record_trace(validated_input, validated_output, used_openai)
+        return validated_output

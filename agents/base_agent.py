@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Type
+
+from pydantic import BaseModel
 
 
 class BaseAgent(ABC):
     """Abstract JSON-in, JSON-out contract for all agents."""
+
+    last_trace: dict[str, Any] | None = None
 
     @property
     @abstractmethod
@@ -37,11 +42,34 @@ class BaseAgent(ABC):
         text = response.output_text.strip()
         return json.loads(text)
 
-    def _mock_base(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Shared deterministic metadata for local mock outputs."""
-        return {
+    def _model_validate(self, schema: Type[BaseModel], payload: dict[str, Any]) -> BaseModel:
+        if hasattr(schema, "model_validate"):
+            return schema.model_validate(payload)
+        return schema.parse_obj(payload)
+
+    def _model_dump(self, model: BaseModel) -> dict[str, Any]:
+        if hasattr(model, "model_dump"):
+            return model.model_dump()
+        return model.dict()
+
+    def _validate_input(self, schema: Type[BaseModel], payload: dict[str, Any]) -> dict[str, Any]:
+        validated = self._model_validate(schema, payload)
+        return self._model_dump(validated)
+
+    def _validate_output(self, schema: Type[BaseModel], payload: dict[str, Any]) -> dict[str, Any]:
+        validated = self._model_validate(schema, payload)
+        return self._model_dump(validated)
+
+    def _record_trace(
+        self,
+        validated_input: dict[str, Any],
+        validated_output: dict[str, Any],
+        used_openai: bool,
+    ) -> None:
+        self.last_trace = {
             "agent": self.name,
-            "mode": "mock",
-            "source": "local",
-            "input": payload,
+            "timestamp": datetime.now().isoformat(),
+            "used_openai": used_openai,
+            "validated_input": validated_input,
+            "validated_output": validated_output,
         }

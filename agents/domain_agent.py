@@ -4,7 +4,29 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from .base_agent import BaseAgent
+
+
+class DomainInputSchema(BaseModel):
+    """Validated input schema for DomainMappingAgent."""
+
+    summary: dict[str, Any] = Field(default_factory=dict)
+    interpretation: dict[str, Any] = Field(default_factory=dict)
+    bio_insights: dict[str, Any] = Field(default_factory=dict)
+
+
+class DomainOutputSchema(BaseModel):
+    """Validated output schema for DomainMappingAgent."""
+
+    agent: str
+    mode: str
+    mapped_concepts: list[dict[str, Any]]
+    pathway_interpretation: list[dict[str, Any]]
+    candidate_engineering_targets: list[dict[str, Any]]
+    hypotheses: list[str]
+    caveats: list[str]
 
 
 class DomainMappingAgent(BaseAgent):
@@ -54,17 +76,26 @@ class DomainMappingAgent(BaseAgent):
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Produce domain mapping JSON."""
-        if not self.has_openai_key():
-            return self._mock(payload)
+        validated_input = self._validate_input(DomainInputSchema, payload)
 
-        try:
-            return self._call_openai_json(
-                (
-                    "You are a domain mapping agent for multi-omics AI. Return valid JSON only with keys: "
-                    "agent, mode, mapped_concepts, pathway_interpretation, candidate_engineering_targets, "
-                    "hypotheses, caveats."
-                ),
-                payload,
-            )
-        except Exception:
-            return self._mock(payload)
+        used_openai = False
+        if self.has_openai_key():
+            try:
+                used_openai = True
+                output = self._call_openai_json(
+                    (
+                        "You are a domain mapping agent for multi-omics AI. Return valid JSON only with keys: "
+                        "agent, mode, mapped_concepts, pathway_interpretation, candidate_engineering_targets, "
+                        "hypotheses, caveats."
+                    ),
+                    validated_input,
+                )
+            except Exception:
+                used_openai = False
+                output = self._mock(validated_input)
+        else:
+            output = self._mock(validated_input)
+
+        validated_output = self._validate_output(DomainOutputSchema, output)
+        self._record_trace(validated_input, validated_output, used_openai)
+        return validated_output

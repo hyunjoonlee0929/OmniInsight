@@ -241,8 +241,16 @@ def main() -> None:
             "domain_mapping_agent": report_body.get("domain_mapping", {}),
             "executive_report_agent": report,
             "bio_insights": details.get("bio_insights", {}),
+            "validated_payloads": {
+                k: {
+                    "validated_input": (v or {}).get("validated_input"),
+                    "validated_output": (v or {}).get("validated_output"),
+                }
+                for k, v in (details.get("agent_traces", {}) or {}).items()
+            },
         },
     )
+    tracker.save_json(run_path / "agent_execution_trace.json", details.get("agent_traces", {}))
 
     tracker.save_json(run_path / "final_report.json", report)
     model_path = tracker.save_model_artifact(model=model_result.model, model_type=adapter_cfg.model_type, run_path=run_path)
