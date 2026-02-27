@@ -1,133 +1,139 @@
 # OmniInsight
 
-OmniInsight is a modular AI analysis platform for tabular and multi-omics workflows.
-It runs end-to-end:
+## 1. Project Motivation
 
-1. Data validation
-2. Auto preprocessing (imputation, scaling, one-hot encoding, split)
-3. Model training (XGBoost or PyTorch DNN with early stopping)
-4. SHAP feature attribution
-5. Agent-driven structured report generation
-6. Experiment tracking and reproducibility artifact storage
+OmniInsight is a modular AI system designed to simulate end-to-end biological and general data intelligence pipelines.
 
-## Project Structure
+This project was built to explore how AI can:
+- Integrate heterogeneous datasets (including multi-omics)
+- Train reproducible machine learning models
+- Abstract feature-level signals into domain-level insights
+- Generate hypothesis-oriented executive reports
+- Maintain experiment traceability and reproducibility
 
-```text
-OmniInsight/
-├── core/
-├── adapters/
-├── interpretation/
-├── agents/
-├── dashboard/
-├── config/
-├── data/
-└── main.py
-```
+The architecture reflects real-world AI-driven bio research systems where modeling, interpretability, and domain reasoning must operate as loosely coupled but coordinated modules.
 
-## Experiment Workflow
+---
 
-```mermaid
-flowchart TD
-  A[Load Config + Seed] --> B[Validate + Preprocess]
-  B --> C[Train Model]
-  C --> D[SHAP Interpretation]
-  D --> E[Agent Pipeline]
-  E --> F[Generate Final Report]
-  F --> G[Persist Run Artifacts]
-  G --> H[runs/run_id/]
-```
+## 2. System Architecture
 
-## Reproducibility
+### 2.1 High-Level Flow
 
-- Global seed is applied to `random`, `numpy`, and `torch` (if available).
-- Train/test split uses the seeded random state.
-- Config hash (`SHA256`) is computed from the config file and saved per run.
-- Effective adapter/model hyperparameters are snapshotted in each run.
-- `--from-run {run_id}` replays a saved run configuration.
+Data Ingestion  
+-> Preprocessing  
+-> Model Training  
+-> Feature Interpretation  
+-> Domain Mapping  
+-> Executive Report Generation  
+-> Run Artifact Tracking
 
-## Installation
+### 2.2 Design Principles
 
-```bash
-pip install -r OmniInsight/requirements.txt
-```
+**Modular Core**
+- `core/`: preprocessing, training, model engine
+- `interpretation/`: SHAP + biological abstraction
+- `adapters/`: domain-specific orchestration
+- `agents/`: contract-based reasoning modules
+- `dashboard/`: user-facing interface
 
-## CLI Demo (example_dataset.csv)
+**Adapter Pattern**
+- `GeneralAdapter` for generic ML workflows
+- `BioAdapter` for multi-omics and biological abstraction
 
-```bash
-python OmniInsight/main.py \
-  --data OmniInsight/data/example_dataset.csv \
-  --config OmniInsight/config/model_config.yaml \
-  --model-type xgboost \
-  --seed 42
-```
+**Contract-Based Multi-Agent Design**
+- Each agent defines:
+  - `InputSchema` (Pydantic)
+  - `OutputSchema` (Pydantic)
+- All inputs/outputs validated before execution
+- Execution traces persisted per run
 
-Run with DNN:
+---
 
-```bash
-python OmniInsight/main.py \
-  --data OmniInsight/data/example_dataset.csv \
-  --model-type dnn \
-  --seed 42
-```
+## 3. Bio AI Extension
 
-Re-run from a previous run:
+### 3.1 Multi-Omics Integration
 
-```bash
-python OmniInsight/main.py --from-run 20260227_230000_123456_xgboost
-```
+Supports:
+- Transcriptomics
+- Proteomics
+- Metabolomics
 
-## Example Run Directory
+Features are block-tracked and prefixed:
+- `tx__`
+- `pr__`
+- `mt__`
 
-```text
-runs/20260227_230000_123456_xgboost/
-├── config_snapshot.yaml
-├── config_model_snapshot.yaml
-├── config_hash.txt
-├── model_hyperparameters.yaml
-├── metrics.json
-├── top_features.json
-├── agent_outputs.json
-├── final_report.json
-└── model.json (or model.model / model.pt)
-```
+Merged by sample ID and preserved through modeling and interpretation.
 
-## Streamlit Dashboard
+### 3.2 Pathway-Level Aggregation
 
-```bash
-streamlit run OmniInsight/dashboard/app.py
-```
+Feature importance is abstracted:  
+Gene-level importance -> Pathway-level scoring
 
-In the dashboard you can upload any CSV, choose target/task/model, and execute the full pipeline.
+- Deterministic pathway mapping
+- Aggregated pathway importance scores
+- Persisted per run
 
-## OpenAI Agent Behavior
+### 3.3 Biological Insight Engine
 
-- If `OPENAI_API_KEY` is set, agents call OpenAI and return JSON outputs.
-- If no API key is set, agents return deterministic structured mock outputs.
+Generates:
+- Top regulatory genes
+- Dominant pathways
+- Candidate bioengineering targets
+- Hypothesis statements
 
-## Bio AI Extension
+---
 
-OmniInsight includes a Bio AI extension that mimics AI-driven biological insight pipelines:
+## 4. Reproducibility & Experiment Tracking
 
-- Multi-omics schema ingestion across transcriptomics, proteomics, and metabolomics files.
-- Sample-wise merge using a shared sample ID to build unified training matrices.
-- Feature block tracking per omics layer to preserve modality provenance.
-- Gene/protein/metabolite-to-pathway abstraction using deterministic pathway mapping.
-- Pathway-level importance aggregation from model feature importance outputs.
-- Biological insight abstraction including:
-  - top regulatory genes
-  - dominant pathways
-  - candidate bioengineering targets
-  - hypothesis statements for follow-up experiments
+Each execution creates:
 
-Run Bio mode by providing one or more omics blocks:
+`runs/{run_id}/`
+- `config_snapshot.yaml`
+- `metrics.json`
+- model artifact (`.pt` / `.json`)
+- `top_features.json`
+- `pathway_scores.json`
+- `agent_execution_trace.json`
+- `final_report.json`
 
-```bash
-python OmniInsight/main.py \
-  --data OmniInsight/data/bio_base_dataset.csv \
-  --transcriptomics OmniInsight/data/transcriptomics.csv \
-  --proteomics OmniInsight/data/proteomics.csv \
-  --metabolomics OmniInsight/data/metabolomics.csv \
-  --sample-id-col sample_id \
-  --target-column target \
-  --use-bio-adapter
-```
+Features:
+- Global seed control
+- Config hashing (SHA256)
+- Re-run from saved run (`--from-run`)
+
+This ensures deterministic and traceable experimentation.
+
+---
+
+## 5. Example Use Case
+
+A researcher uploads multi-omics data to predict production yield.
+
+OmniInsight:
+1. Integrates heterogeneous omics blocks
+2. Trains predictive model
+3. Identifies high-impact genes
+4. Aggregates pathway-level importance
+5. Suggests potential engineering targets
+6. Generates structured executive report
+
+---
+
+## 6. Technical Stack
+
+- Python
+- XGBoost
+- PyTorch
+- SHAP (with fallback)
+- Pydantic (agent contract validation)
+- Streamlit (dashboard)
+
+---
+
+## 7. Future Extensions
+
+- Ontology integration
+- Real enrichment analysis
+- LLM-based biological reasoning
+- Production deployment mode
