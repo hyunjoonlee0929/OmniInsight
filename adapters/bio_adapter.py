@@ -63,14 +63,15 @@ class BioAdapter(GeneralAdapter):
             "mapped_features": mapped,
         }
 
-    def run(self, df: pd.DataFrame, config: BioAdapterConfig) -> dict[str, Any]:
+    def run_with_details(self, df: pd.DataFrame, config: BioAdapterConfig) -> dict[str, Any]:
         """Run full workflow with optional multi-modal input integration."""
         working_df = df
         if config.protein_df is not None:
             logger.info("Combining gene and protein modalities")
             working_df = self._combine_modalities(df, config.protein_df, config.target_column)
 
-        report = super().run(df=working_df, config=config)
+        details = super().run_with_details(df=working_df, config=config)
+        report = details["report"]
         top_features = report.get("report", {}).get("top_features", [])
         report["pathway_mapping"] = self.pathway_mapping(top_features)
 
@@ -79,4 +80,9 @@ class BioAdapter(GeneralAdapter):
             "gene_features": len(df.columns) - 1,
             "protein_features": 0 if config.protein_df is None else len(config.protein_df.columns),
         }
-        return report
+        details["report"] = report
+        return details
+
+    def run(self, df: pd.DataFrame, config: BioAdapterConfig) -> dict[str, Any]:
+        """Run full workflow with optional multi-modal input integration."""
+        return self.run_with_details(df=df, config=config)["report"]

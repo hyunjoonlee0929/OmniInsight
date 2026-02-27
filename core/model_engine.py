@@ -407,7 +407,12 @@ class SklearnDNNClassifier:
 class ModelEngine:
     """Build baseline models for classification or regression."""
 
-    def build_xgboost(self, task_type: str, num_classes: int | None = None) -> PredictableModel:
+    def build_xgboost(
+        self,
+        task_type: str,
+        num_classes: int | None = None,
+        random_state: int = 42,
+    ) -> PredictableModel:
         """Return an XGBoost model instance for the selected task."""
         try:
             from xgboost import XGBClassifier, XGBRegressor
@@ -421,10 +426,10 @@ class ModelEngine:
                 return LogisticRegression(
                     max_iter=1000,
                     solver="liblinear",
-                    random_state=42,
+                    random_state=random_state,
                 )
             if task_type == "regression":
-                return Ridge(alpha=1.0, random_state=42)
+                return Ridge(alpha=1.0, random_state=random_state)
             raise ValueError("task_type must be 'classification' or 'regression'.") from exc
 
         if task_type == "classification":
@@ -438,7 +443,7 @@ class ModelEngine:
                     objective="multi:softprob",
                     eval_metric="mlogloss",
                     num_class=num_classes,
-                    random_state=42,
+                    random_state=random_state,
                 )
             return XGBClassifier(
                 n_estimators=300,
@@ -448,7 +453,7 @@ class ModelEngine:
                 colsample_bytree=0.9,
                 objective="binary:logistic",
                 eval_metric="logloss",
-                random_state=42,
+                random_state=random_state,
             )
 
         if task_type == "regression":
@@ -460,7 +465,7 @@ class ModelEngine:
                 colsample_bytree=0.9,
                 objective="reg:squarederror",
                 eval_metric="rmse",
-                random_state=42,
+                random_state=random_state,
             )
 
         raise ValueError("task_type must be 'classification' or 'regression'.")

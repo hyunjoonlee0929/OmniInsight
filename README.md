@@ -8,6 +8,7 @@ It runs end-to-end:
 3. Model training (XGBoost or PyTorch DNN with early stopping)
 4. SHAP feature attribution
 5. Agent-driven structured report generation
+6. Experiment tracking and reproducibility artifact storage
 
 ## Project Structure
 
@@ -23,6 +24,27 @@ OmniInsight/
 └── main.py
 ```
 
+## Experiment Workflow
+
+```mermaid
+flowchart TD
+  A[Load Config + Seed] --> B[Validate + Preprocess]
+  B --> C[Train Model]
+  C --> D[SHAP Interpretation]
+  D --> E[Agent Pipeline]
+  E --> F[Generate Final Report]
+  F --> G[Persist Run Artifacts]
+  G --> H[runs/run_id/]
+```
+
+## Reproducibility
+
+- Global seed is applied to `random`, `numpy`, and `torch` (if available).
+- Train/test split uses the seeded random state.
+- Config hash (`SHA256`) is computed from the config file and saved per run.
+- Effective adapter/model hyperparameters are snapshotted in each run.
+- `--from-run {run_id}` replays a saved run configuration.
+
 ## Installation
 
 ```bash
@@ -34,7 +56,9 @@ pip install -r OmniInsight/requirements.txt
 ```bash
 python OmniInsight/main.py \
   --data OmniInsight/data/example_dataset.csv \
-  --config OmniInsight/config/model_config.yaml
+  --config OmniInsight/config/model_config.yaml \
+  --model-type xgboost \
+  --seed 42
 ```
 
 Run with DNN:
@@ -42,7 +66,29 @@ Run with DNN:
 ```bash
 python OmniInsight/main.py \
   --data OmniInsight/data/example_dataset.csv \
-  --model-type dnn
+  --model-type dnn \
+  --seed 42
+```
+
+Re-run from a previous run:
+
+```bash
+python OmniInsight/main.py --from-run 20260227_230000_123456_xgboost
+```
+
+## Example Run Directory
+
+```text
+runs/20260227_230000_123456_xgboost/
+├── config_snapshot.yaml
+├── config_model_snapshot.yaml
+├── config_hash.txt
+├── model_hyperparameters.yaml
+├── metrics.json
+├── top_features.json
+├── agent_outputs.json
+├── final_report.json
+└── model.json (or model.model / model.pt)
 ```
 
 ## Streamlit Dashboard

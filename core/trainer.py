@@ -120,7 +120,11 @@ class Trainer:
 
         if cfg.model_type == "xgboost":
             num_classes = int(np.unique(y_train_encoded).shape[0]) if cfg.task_type == "classification" else None
-            model = self.model_engine.build_xgboost(cfg.task_type, num_classes=num_classes)
+            model = self.model_engine.build_xgboost(
+                cfg.task_type,
+                num_classes=num_classes,
+                random_state=cfg.random_state,
+            )
             X_train_fit = X_train.toarray() if hasattr(X_train, "toarray") else X_train
             X_test_fit = X_test.toarray() if hasattr(X_test, "toarray") else X_test
         elif cfg.model_type == "dnn":

@@ -36,6 +36,7 @@ class GeneralAdapterConfig:
     dnn_max_epochs: int = 200
     dnn_patience: int = 20
     dnn_batch_size: int = 32
+    random_seed: int = 42
 
 
 class GeneralAdapter(BaseAdapter):
@@ -76,6 +77,7 @@ class GeneralAdapter(BaseAdapter):
             dnn_max_epochs=cfg.dnn_max_epochs,
             dnn_patience=cfg.dnn_patience,
             dnn_batch_size=cfg.dnn_batch_size,
+            random_state=cfg.random_seed,
         )
 
         logger.info("Training model_type=%s for task_type=%s", cfg.model_type, cfg.task_type)
@@ -108,8 +110,9 @@ class GeneralAdapter(BaseAdapter):
         """Generate final executive JSON report from modular agent outputs."""
         return self.report_agent.run(payload)
 
-    def run(self, df: pd.DataFrame, config: GeneralAdapterConfig) -> dict[str, Any]:
-        """Execute full tabular workflow and return a structured report."""
+    def run_with_details(self, df: pd.DataFrame, config: GeneralAdapterConfig) -> dict[str, Any]:
+        """Execute full tabular workflow and return report plus intermediate artifacts."""
+        self.preprocessor.random_state = config.random_seed
         pre = self.preprocess(df=df, target_column=config.target_column)
         pre["config"] = config
 
@@ -129,4 +132,15 @@ class GeneralAdapter(BaseAdapter):
         }
         report = self.generate_report(payload)
         logger.info("Pipeline completed")
-        return report
+        return {
+            "report": report,
+            "model_result": model_result,
+            "summary_output": summary,
+            "interpretation_output": interpretation,
+            "payload": payload,
+            "processed_payload": pre,
+        }
+
+    def run(self, df: pd.DataFrame, config: GeneralAdapterConfig) -> dict[str, Any]:
+        """Execute full tabular workflow and return a structured report."""
+        return self.run_with_details(df=df, config=config)["report"]
